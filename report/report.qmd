@@ -32,6 +32,11 @@ execute:
 jupyter: soccer-xg
 ---
 
+::: {.callout-tip}
+## Interactive application
+[Open the Streamlit app](https://soccer-xg.streamlit.app){target="_blank"}
+:::
+
 ```{python}
 #| echo: false
 #| output: false
