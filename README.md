@@ -5,7 +5,7 @@ An expected-goals (xG) model built from scratch on **100,864 shots** from StatsB
 finishing skill from luck. It comes with an interactive Streamlit app where you build a shot by
 clicking on the pitch.
 
-**[Live app](https://soccer-xg.streamlit.app)** · **[Report](https://nhamhhung.github.io/soccer-xg/)**
+**[Live app](https://soccer-xg-cyrb3mjzcfkscvijj5bb8d.streamlit.app/)** · **[Report](https://nhamhhung.github.io/soccer-xg/)**
 
 ## Findings
 

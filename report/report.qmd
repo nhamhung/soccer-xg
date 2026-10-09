@@ -34,7 +34,7 @@ jupyter: soccer-xg
 
 ::: {.callout-tip}
 ## Interactive application
-[Open the Streamlit app](https://soccer-xg.streamlit.app){target="_blank"}
+[Open the Streamlit app](https://soccer-xg-cyrb3mjzcfkscvijj5bb8d.streamlit.app/){target="_blank"}
 :::
 
 ```{python}
