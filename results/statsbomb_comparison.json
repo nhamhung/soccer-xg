@@ -1,0 +1,9 @@
+{
+  "log_loss_ours": 0.26041767880373334,
+  "log_loss_statsbomb_recalibrated": 0.2637476750925841,
+  "difference": -0.003329996288850797,
+  "ci_low": -0.005751369108638681,
+  "ci_high": -0.0010481045831908587,
+  "test_matches": 811,
+  "test_shots": 20552
+}

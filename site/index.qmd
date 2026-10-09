@@ -1,0 +1,23 @@
+---
+title: "Soccer xG: Is Finishing a Skill?"
+---
+
+## Project
+
+An expected-goals model built on 100,864 shots from StatsBomb Open Data, on par with StatsBomb's own xG on held-out matches, used to separate finishing skill from luck.
+
+This GitHub Pages site contains static documentation. The interactive Python application runs separately on Streamlit Community Cloud.
+
+## Use the project
+
+- [Source repository](https://github.com/nhamhhung/soccer-xg)
+- [Interactive Streamlit app](https://soccer-xg.streamlit.app)
+- [Clone, fork, and deployment guide](https://github.com/nhamhhung/soccer-xg/blob/main/docs/SETUP_AND_DEPLOYMENT.md)
+
+## Reproduce it
+
+Clone the repository, create a Python 3.11 or 3.12 environment, install `requirements.txt` and `app/requirements.txt`, run `pytest tests/`, then run `python scripts/smoke_app.py`.
+
+Open Shot Simulator, Finishing, Shot Maps, Model vs StatsBomb and About; place a shooter and a defender, load a real shot, and read its xG.
+
+Data: StatsBomb Open Data (non-commercial use, with attribution).

@@ -1,0 +1,26 @@
+{
+  "male": {
+    "players": 88,
+    "min_shots_per_half": 40,
+    "split_half_r": 0.018485205824202627,
+    "ci_low": -0.21774716746235862,
+    "ci_high": 0.2627701421545975,
+    "full_sample_reliability": 0.036299409590821875
+  },
+  "female": {
+    "players": 58,
+    "min_shots_per_half": 40,
+    "split_half_r": 0.00036032497591285284,
+    "ci_low": -0.2671297368941601,
+    "ci_high": 0.25917845180274335,
+    "full_sample_reliability": 0.0007203903771804003
+  },
+  "all": {
+    "players": 146,
+    "min_shots_per_half": 40,
+    "split_half_r": 0.019527130758182513,
+    "ci_low": -0.1644993291499634,
+    "ci_high": 0.18429733962109493,
+    "full_sample_reliability": 0.03830625035679227
+  }
+}

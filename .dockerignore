@@ -1,0 +1,15 @@
+data/
+notebooks/
+report/
+tests/
+scripts/
+site/
+docs/
+.git/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/

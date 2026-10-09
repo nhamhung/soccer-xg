@@ -1,0 +1,365 @@
+---
+title: "Is Finishing a Skill?"
+subtitle: "An expected-goals model built from 100,864 shots, benchmarked against StatsBomb's own, and used to separate finishing from luck"
+author: "Your Name"
+date: today
+format:
+  html:
+    theme:
+      light: flatly
+      dark: darkly
+    css: styles.css
+    toc: true
+    toc-location: left
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-tools: true
+    code-copy: true
+    title-block-banner: true
+    fig-width: 7.5
+    fig-height: 4.5
+    embed-resources: true
+    smooth-scroll: true
+  pdf:
+    toc: true
+    number-sections: true
+    echo: false
+execute:
+  echo: true
+  warning: false
+  message: false
+jupyter: soccer-xg
+---
+
+```{python}
+#| echo: false
+#| output: false
+import json
+import sys
+sys.path.insert(0, "../src")
+sys.path.insert(0, "../app")
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from IPython.display import Markdown
+
+from pages_src import shared
+from soccer_xg import config, features, scene
+from soccer_xg import model as xg_model
+
+RESULTS = config.PROJECT_ROOT / "results"
+shots = pd.read_parquet(config.PROJECT_ROOT / "app" / "data" / "shots_app.parquet")
+metrics = pd.read_csv(RESULTS / "test_metrics.csv")
+transfer = pd.read_csv(RESULTS / "gender_transfer.csv")
+finishing = pd.read_csv(RESULTS / "player_finishing.csv")
+persistence = json.loads((RESULTS / "finishing_persistence.json").read_text())
+comparison = json.loads((RESULTS / "statsbomb_comparison.json").read_text())
+messi_team = pd.read_csv(RESULTS / "messi_team_adjusted.csv")
+messi_seasons = pd.read_csv(RESULTS / "messi_by_season.csv")
+model = xg_model.load_model()
+
+np_metrics = metrics[metrics["subset"] == "Non-penalty"].set_index("model")
+ours, sb, base = (np_metrics.loc[m] for m in ["This project (LightGBM)", "StatsBomb xG",
+                                              "Distance + angle (logistic)"])
+p_all = persistence["all"]
+messi = messi_team.iloc[0]
+mates = messi_team.iloc[1]
+plt.rcParams.update({"axes.spines.top": False, "axes.spines.right": False})
+```
+
+## Summary {.unnumbered}
+
+```{python}
+#| echo: false
+Markdown(f"""
+**Expected goals (xG)** is the probability that an average player scores a given chance. I built an xG
+model from every shot in StatsBomb's free event data ({len(shots):,} shots from
+{shots['match_id'].nunique():,} men's and women's matches) and used it to ask how much of "great finishing"
+is skill.
+
+- **The model is competitive with a professional one.** On {comparison['test_matches']} held-out matches it
+  scores a log loss of {ours.log_loss:.4f} against {sb.log_loss:.4f} for StatsBomb's own xG (ROC AUC
+  {ours.roc_auc:.3f} vs {sb.roc_auc:.3f}). Most of the gain is on women's matches.
+- **Where the goalkeeper stands matters more than the shot angle.** The freeze frame (every player's
+  position at the moment of the shot) carries most of the signal.
+- **A men's model works for women's football.** Trained only on men's shots, it is well calibrated on
+  women's matches.
+- **For almost every player, beating xG is luck.** Over-performance in one half of a player's matches
+  barely predicts the other half (r = {p_all['split_half_r']:.2f}, {p_all['players']} players).
+- **Messi is the exception.** Even measured against his Barcelona team-mates, who also beat xG, he scored
+  {messi.goals_above_team_adjusted:.0f} more non-penalty goals than expected, about
+  {messi.goals_above_team_adjusted / ((messi.luck_high - messi.luck_low) / 2):.1f} times the range luck allows.
+""")
+```
+
+## Data
+
+[StatsBomb Open Data](https://github.com/statsbomb/open-data) publishes full event data for selected
+competitions: every shot with its location, body part and technique, the pass that set it up, and a
+**freeze frame** (the position of every visible player when the ball was struck).
+Penalty shoot-outs are excluded.
+
+```{python}
+#| label: tbl-coverage
+#| tbl-cap: "Shots by gender. The open data favours some teams and tournaments (Barcelona 2004–2021, World Cups, Euros), so it is not a random sample of football."
+coverage = (shots.groupby("gender", observed=True)
+            .agg(matches=("match_id", "nunique"), shots=("shot_id", "size"), goals=("is_goal", "sum"),
+                 competitions=("competition", "nunique"))
+            .rename(index={"female": "Women", "male": "Men"}))
+coverage["goals per shot"] = (coverage["goals"] / coverage["shots"]).round(3)
+coverage
+```
+
+```{python}
+#| label: fig-freeze-frame
+#| fig-cap: "One shot and its freeze frame. The shaded triangle is the shooting cone from the ball to the posts; anyone inside it can block the shot."
+example = shots[(shots["is_goal"] == 1) & shots["freeze_frame"].notna() & shots["xg"].between(0.25, 0.35)].iloc[0]
+frame = np.array(json.loads(example["freeze_frame"]))
+pitch, fig, ax = shared.half_pitch(figsize=(6, 4.4), x_min=78)
+pitch.polygon([[(example.x, example.y), (120, 36), (120, 44)]], ax=ax, color=shared.OURS_COLOUR, alpha=0.15)
+for is_mate, is_gk, colour, marker in [(0, 0, "#264653", "o"), (1, 0, "#7fb7be", "o"), (0, 1, "#2a9d8f", "s")]:
+    sel = frame[(frame[:, 2] == is_mate) & (frame[:, 3] == is_gk)]
+    if len(sel):
+        pitch.scatter(sel[:, 0], sel[:, 1], ax=ax, s=120, color=colour, marker=marker, edgecolors="white")
+pitch.scatter([example.x], [example.y], ax=ax, s=200, color=shared.GOAL_COLOUR, edgecolors="white")
+ax.set_title(f"{example.player}, {example.home_team} v {example.away_team} ({example.match_date}): "
+             f"xG {example.xg:.2f}", fontsize=9)
+plt.show()
+```
+
+## Features and model
+
+`features.shot_features()` builds every feature. The training script, the evaluation and the app's
+simulator all call it, so a shot placed in the app is scored exactly like a real one.
+
+- **Geometry:** distance to goal, the angle the goal mouth subtends, how wide the shot is.
+- **Freeze frame:** defenders and team-mates in the shooting cone; the nearest defender and how many are
+  within 3 and 5 yards; the keeper's distance from goal and from the shooter, how far the keeper has
+  come out, and how far he is off the line of the shot.
+- **Context:** body part, technique, first-time, one-on-one, under pressure, phase of play, and the
+  assist (cross, cut-back, through ball, its height and length).
+
+The model is LightGBM, with the number of trees chosen by 5-fold cross-validation grouped by match (shots
+from one match never sit on both sides of a split). Penalties get a constant: the training conversion
+rate, `{python} f"{model.penalty_xg:.3f}"`.
+
+### Two fixes found by using the model
+
+Building the simulator exposed two flaws that the test metrics could not see:
+
+1. **Wide shots looked better than central ones.** The first model gave a shot from the touchline 25
+   yards out *more* xG than a central one at the same distance. About 35 freak goals from wide areas
+   (mishit crosses) had pulled the trees. **Monotonic constraints** fixed it: xG must fall with distance,
+   width and defenders in the cone, and rise with the angle.
+2. **"Keeper far away" meant "easy goal".** In real data a keeper 40 yards from the shooter is usually
+   one who has left his goal, so the model rewarded large distances. That fired wrongly for any long or
+   wide shot with the keeper on his line. The distance is now **capped at 12 yards**, with a separate
+   "keeper advance" feature (how far he has come out towards the shooter) carrying the real signal.
+
+Both changes cost almost nothing in held-out log loss (about +0.0003) and make the model behave
+sensibly everywhere on the pitch.
+
+```{python}
+#| label: fig-xg-map
+#| fig-cap: "xG from every spot: an unpressured right-foot shot with the keeper in position and no defenders."
+grid = scene.xg_grid(model, step=1.0, x_min=78.0)
+xs, ys = np.sort(grid["x"].unique()), np.sort(grid["y"].unique())
+values = grid.pivot(index="x", columns="y", values="xg").loc[xs, ys].to_numpy()
+pitch, fig, ax = shared.half_pitch(figsize=(6, 4.4), x_min=78)
+ylim, xlim = ax.get_ylim(), ax.get_xlim()
+im = ax.imshow(values, origin="lower", extent=[0, 80, 78, 120], cmap="YlOrRd", alpha=0.75, vmin=0, vmax=0.6,
+               interpolation="bilinear", aspect="auto", zorder=1)
+ax.set_xlim(xlim)
+ax.set_ylim(ylim)
+fig.colorbar(im, ax=ax, shrink=0.7, label="xG")
+plt.show()
+```
+
+## How good is it?
+
+Twenty percent of matches, chosen within every competition-season, were held out before any modelling.
+@tbl-metrics scores three models on their non-penalty shots: the textbook distance-and-angle logistic
+regression, this project's model, and **StatsBomb's own xG**, which ships with the data.
+
+```{python}
+#| label: tbl-metrics
+#| tbl-cap: "Held-out non-penalty shots. Log loss and Brier: lower is better. ROC AUC: how well the model ranks goals above misses. Calibration error: shot-weighted gap between xG and the actual goal rate."
+np_metrics[["log_loss", "brier", "roc_auc", "ece", "goals", "xg"]].rename(columns={
+    "log_loss": "Log loss", "brier": "Brier", "roc_auc": "ROC AUC", "ece": "Calibration error",
+    "goals": "Goals", "xg": "Total xG"}).round({"Log loss": 4, "Brier": 4, "ROC AUC": 3,
+                                                 "Calibration error": 4, "Total xG": 0})
+```
+
+```{python}
+#| label: fig-calibration
+#| fig-cap: "Calibration on held-out shots. StatsBomb's values run slightly low on this data."
+test = shots[shots["xg_holdout"].notna() & (shots["shot_type"] != "Penalty")]
+fig, ax = plt.subplots(figsize=(5.5, 4.4))
+for name, col, colour in [("This project", "xg_holdout", shared.OURS_COLOUR),
+                          ("StatsBomb", "statsbomb_xg", shared.SB_COLOUR)]:
+    b = shared.calibration_bins(test["is_goal"].to_numpy(), test[col].to_numpy(float))
+    ax.plot(b["mean_xg"], b["goal_rate"], "o-", color=colour, label=name)
+ax.plot([0, 0.7], [0, 0.7], "--", color="#999", lw=1)
+ax.set_xlabel("Predicted xG")
+ax.set_ylabel("Share scored")
+ax.legend(frameon=False)
+plt.show()
+```
+
+```{python}
+#| echo: false
+Markdown(f"""
+**Is the comparison fair?** Not entirely, and the biases run both ways. StatsBomb's model is
+built on far more data than is public and may well have seen these very matches; but it was not tuned to
+these competitions, and this model was. Part of a log-loss edge can come from calibration alone (StatsBomb's
+values add up to {sb.xg:,.0f} goals where {int(sb.goals):,} were scored). So I re-calibrated StatsBomb's
+values on the training matches (Platt scaling, separately by gender) and compared again: this model is still
+ahead by **{-comparison['difference']:.4f}** in log loss (95% CI {-comparison['ci_high']:.4f} to
+{-comparison['ci_low']:.4f}, bootstrapping the {comparison['test_matches']} test matches). ROC AUC, which
+ignores calibration altogether, tells the same story. The edge is real but small. The fair summary is
+*"on par with StatsBomb on men's football, slightly better on women's"*, not "better than StatsBomb".
+""")
+```
+
+```{python}
+#| label: fig-importance
+#| fig-cap: "Share of the model's total gain by feature. Grouped, the keeper's position carries 45% and the whole freeze frame 56%, against 25% for distance and angle together."
+gain = pd.Series(model.booster.feature_importance("gain"), model.booster.feature_name())
+gain = (gain / gain.sum()).sort_values().tail(12)
+from pages_src.simulator import FEATURE_LABELS
+fig, ax = plt.subplots(figsize=(6.5, 4.2))
+ax.barh([FEATURE_LABELS.get(f, f) for f in gain.index], gain.values, color=shared.OURS_COLOUR)
+ax.set_xlabel("Share of total gain")
+plt.show()
+```
+
+## Men's and women's football
+
+```{python}
+#| label: tbl-transfer
+#| tbl-cap: "Held-out log loss by training data (rows) and test matches (columns). Lower is better."
+t = transfer.assign(test_on=transfer["test_on"].map({"female": "Women's matches", "male": "Men's matches"}))
+t.pivot(index="model", columns="test_on", values="log_loss").round(4)
+```
+
+```{python}
+#| echo: false
+row = transfer[(transfer["test_on"] == "female") & (transfer["model"] == "Trained on men's shots")].iloc[0]
+Markdown(f"""
+A model that has **never seen a women's match** predicts {row.xg:.0f} goals on the women's test matches,
+where {int(row.goals)} were scored: the same chances go in at the same rates. Adding women's shots improves
+the model on *both* (it is simply more data), which is also why this project beats StatsBomb mostly on
+women's matches: StatsBomb's public model is presumably fitted mostly to men's football.
+""")
+```
+
+## Is finishing a skill?
+
+All numbers here use **out-of-fold xG**: every shot is scored by a model that never saw its match, so a
+player cannot "beat" a model fitted to their own shots.
+
+### Luck is large
+
+Even an average finisher drifts above or below xG. Simulating each shot as a coin flip with probability
+equal to its xG gives the range luck alone produces for the *same* chances (@fig-funnel).
+
+```{python}
+#| label: fig-funnel
+#| fig-cap: "Goals minus xG for every player with at least 150 non-penalty shots. Grey: 95% range of luck alone."
+order = finishing.sort_values("xg")
+fig, ax = plt.subplots(figsize=(8, 4.4))
+ax.fill_between(order["xg"], order["luck_low"], order["luck_high"], color="#ddd", step="mid",
+                label="Luck alone (95%)")
+inside = ~finishing["beyond_luck"]
+ax.scatter(finishing.loc[inside, "xg"], finishing.loc[inside, "goals_minus_xg"], s=22, color=shared.MISS_COLOUR)
+ax.scatter(finishing.loc[~inside, "xg"], finishing.loc[~inside, "goals_minus_xg"], s=36, color=shared.GOAL_COLOUR,
+           label="Beyond luck")
+for _, r in finishing[~inside].iterrows():
+    ax.annotate("Messi" if r["player"] == shared.MESSI else r["player"].split()[0],
+                (r["xg"], r["goals_minus_xg"]), xytext=(4, 3), textcoords="offset points", fontsize=8)
+ax.axhline(0, color="#444", lw=0.8)
+ax.set_xscale("log")
+ax.set_xlabel("Total xG (log scale)")
+ax.set_ylabel("Goals − xG")
+ax.legend(frameon=False, loc="upper left")
+plt.show()
+```
+
+### Hot streaks don't repeat
+
+```{python}
+#| echo: false
+male, female = persistence["male"], persistence["female"]
+Markdown(f"""
+If finishing were a strong skill, a player who beats xG in half their matches would beat it in the other
+half too. Splitting each player's matches into alternating halves (at least
+{p_all['min_shots_per_half']} shots in each), the correlation of per-shot goals-minus-xG between halves is
+**r = {p_all['split_half_r']:.2f}** (95% CI {p_all['ci_low']:.2f} to {p_all['ci_high']:.2f};
+{p_all['players']} players): {male['split_half_r']:.2f} for men, {female['split_half_r']:.2f} for women. For a
+typical player, a season of hot finishing says almost nothing about the next. That doesn't mean finishing
+skill is zero, only that with a few dozen shots per half it is too small to tell apart from luck.
+""")
+```
+
+### …except Messi
+
+```{python}
+#| label: tbl-messi
+#| tbl-cap: "Non-penalty goals vs out-of-fold xG. Luck: the 95% range of goals − xG for an average finisher on the same shots."
+messi_team.assign(**{"goals − xG": messi_team["goals"] - messi_team["xg"]})[
+    ["group", "shots", "goals", "xg", "goals − xG", "luck_low", "luck_high"]].round(1)
+```
+
+```{python}
+#| echo: false
+Markdown(f"""
+Messi scored **{int(messi.goals)}** non-penalty goals for Barcelona from **{messi.xg:.0f}** xG. But his
+team-mates *also* beat xG, by {mates.goals_per_xg - 1:.0%}, more than luck allows. Part of the gap is
+therefore a team effect the model cannot see: the quality of chances Barcelona created, which a freeze
+frame only partly captures. Scaling Messi's xG by his team-mates' rate still leaves
+**+{messi.goals_above_team_adjusted:.0f} goals**, against a luck range of about
+±{(messi.luck_high - messi.luck_low) / 2:.0f}. Away from Barcelona (Argentina, PSG, Inter Miami; only
+{int(messi_team.iloc[2].shots)} shots) his finishing is within luck.
+""")
+```
+
+```{python}
+#| label: fig-messi-seasons
+#| fig-cap: "Messi's goals − xG by competition-season (≥ 30 shots). Whiskers: 95% luck range; red bars are beyond it."
+s = messi_seasons[messi_seasons["shots"] >= 30].reset_index(drop=True)
+fig, ax = plt.subplots(figsize=(8, 3.6))
+colours = [shared.GOAL_COLOUR if g > h else shared.MISS_COLOUR for g, h in zip(s["goals_minus_xg"], s["luck_high"])]
+ax.bar(s.index, s["goals_minus_xg"], color=colours)
+ax.errorbar(s.index, np.zeros(len(s)), yerr=[-s["luck_low"], s["luck_high"]], fmt="none", ecolor="#999",
+            capsize=3, lw=1)
+ax.set_xticks(s.index, [f"{a}\n{b.replace('La Liga', '').strip()}" for a, b in zip(s["season"], s["competition"])],
+              fontsize=7)
+ax.axhline(0, color="#444", lw=0.8)
+ax.set_ylabel("Goals − xG")
+plt.show()
+```
+
+## Limitations
+
+- **Not a random sample.** The open data covers Barcelona's 2004–2021 seasons in full, several complete
+  2015/16 leagues, and many tournaments. Findings describe these matches.
+- **What xG can't see.** Freeze frames give positions, not the ball's spin, the shooter's balance, or
+  which is their stronger foot. Some of what looks like finishing skill is information the model lacks.
+- **Team effects.** As Barcelona shows, a team can systematically create better chances than its freeze
+  frames suggest. Player-level finishing should be judged against team-mates, not just the model.
+- **The StatsBomb comparison** is informative, not a head-to-head contest: the two models were built for
+  different purposes on different data.
+
+## Reproduce
+
+```bash
+python scripts/download_data.py   # StatsBomb Open Data -> data/processed/shots.parquet
+python scripts/train.py           # model, held-out metrics
+python scripts/analyze.py         # out-of-fold xG, transfer, finishing analyses -> results/
+python scripts/build_app_data.py  # compact data for the app
+quarto render report/report.qmd
+```
+
+Data: StatsBomb Open Data, used under its non-commercial licence with attribution.

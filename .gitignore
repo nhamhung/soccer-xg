@@ -1,0 +1,29 @@
+# Data & generated artifacts (regenerable: scripts/download_data.py, train.py, analyze.py)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+models/*.joblib
+# The small production model and the compact app data are required by Streamlit Cloud.
+!models/xg_model.joblib
+.env
+.streamlit/secrets.toml
+.venv/
+venv/
+_site/
+
+# Quarto render output
+/report/report.html
+!/report/report.html
+/report/report.pdf
+!/report/report.pdf
+/report/report.tex
+/report/.quarto/
+/report/report_files/
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.DS_Store

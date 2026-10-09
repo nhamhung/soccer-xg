@@ -1,0 +1,7 @@
+repository_owner: nhamhhung
+repository_name: soccer-xg
+default_branch: main
+pages_url: https://nhamhhung.github.io/soccer-xg/
+streamlit_url: https://soccer-xg.streamlit.app
+streamlit_entrypoint: app/streamlit_app.py
+streamlit_secrets: []
