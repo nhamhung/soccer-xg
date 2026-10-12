@@ -7,8 +7,10 @@ Run locally:
 import streamlit as st
 
 from pages_src import about, finishing, model_page, shot_maps, simulator
+from theme import apply_theme
 
 st.set_page_config(page_title="Soccer xG Lab", page_icon="⚽", layout="wide")
+apply_theme()
 
 pages = [
     # Every page module exports `render`, so give each an explicit url_path.
