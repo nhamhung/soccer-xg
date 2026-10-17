@@ -1,3 +1,35 @@
+[project]
+name = "soccer-xg"
+version = "1.0.0"
+description = "Expected-goals model and finishing analysis on StatsBomb Open Data"
+requires-python = ">=3.12,<3.13"
+# Exact versions the project was built and tested with (uv.lock pins everything else).
+dependencies = [
+    "pandas==3.0.6",
+    "numpy==2.5.3",
+    "pyarrow==25.0.1",
+    "scikit-learn==1.9.1",
+    "lightgbm==4.7.0",
+    "joblib==1.6.0",
+    "matplotlib==3.11.2",
+    "mplsoccer==1.8.1",
+    "streamlit==1.65.0",
+    "streamlit-image-coordinates==0.4.1",
+    "pillow==12.3.0",
+    "jupyterlab==4.6.4",
+    "ipykernel==7.4.0",
+    # Unpacks the libomp fallback scripts/launch.py may fetch on macOS.
+    "backports-zstd==1.8.0; sys_platform == 'darwin'",
+]
+
+[dependency-groups]
+dev = ["pytest==9.1.1", "ruff==0.16.10"]
+
+[tool.uv]
+package = false  # a project folder, not an installable library
+# 26.x ships no ready-built wheel for Intel Macs; 25.x does (needed by JupyterLab).
+constraint-dependencies = ["argon2-cffi-bindings<26"]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 110

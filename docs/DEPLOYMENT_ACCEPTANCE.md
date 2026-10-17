@@ -8,8 +8,8 @@ Record one row after initial deployment and every rollback or material deploymen
 | Reviewer | |
 | Git SHA | |
 | Python version | |
-| Repository URL | https://github.com/nhamhhung/soccer-xg |
-| Pages URL | https://nhamhhung.github.io/soccer-xg/ |
+| Repository URL | https://github.com/nhamhung/soccer-xg |
+| Pages URL | https://nhamhung.github.io/soccer-xg/ |
 | Streamlit URL | https://soccer-xg-cyrb3mjzcfkscvijj5bb8d.streamlit.app/ |
 | `/_stcore/health` HTTP 200 | |
 | Core journey | Open Shot Simulator, Finishing, Shot Maps, Model vs StatsBomb and About; place a shooter and a defender, load a real shot, and read its xG. |
