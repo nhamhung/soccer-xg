@@ -14,6 +14,8 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
 from sklearn.model_selection import GroupKFold
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import FunctionTransformer, StandardScaler
 
 from . import config
 from .features import FEATURES, shot_features
@@ -101,22 +103,29 @@ def fit_xg_model(shots: pd.DataFrame, params: dict | None = None, n_folds: int =
                    meta={"n_shots": int(len(shots)), "features": FEATURES})
 
 
+def distance_angle_features(shots: pd.DataFrame) -> np.ndarray:
+    """Distance, log distance and angle: the inputs of the textbook xG model."""
+    f = shot_features(shots)
+    return np.column_stack([f["distance"], np.log1p(f["distance"]), f["angle"]])
+
+
 class DistanceAngleBaseline:
-    """The textbook xG model: logistic regression on distance and angle only."""
+    """The textbook xG model: logistic regression on distance and angle only.
+
+    A scikit-learn Pipeline (features -> scaler -> logistic regression), so the
+    scaler is fitted on the training shots only and travels with the model.
+    """
 
     def fit(self, shots: pd.DataFrame) -> "DistanceAngleBaseline":
         open_play = shots[~is_penalty(shots)]
         self.penalty_xg = float(shots.loc[is_penalty(shots), "is_goal"].mean())
-        self.model = LogisticRegression(max_iter=1000).fit(self._X(open_play), open_play["is_goal"])
+        self.model = make_pipeline(FunctionTransformer(distance_angle_features), StandardScaler(),
+                                   LogisticRegression(max_iter=1000))
+        self.model.fit(open_play, open_play["is_goal"])
         return self
 
-    @staticmethod
-    def _X(shots: pd.DataFrame) -> np.ndarray:
-        f = shot_features(shots)
-        return np.column_stack([f["distance"], np.log1p(f["distance"]), f["angle"]])
-
     def predict(self, shots: pd.DataFrame) -> np.ndarray:
-        return np.where(is_penalty(shots), self.penalty_xg, self.model.predict_proba(self._X(shots))[:, 1])
+        return np.where(is_penalty(shots), self.penalty_xg, self.model.predict_proba(shots)[:, 1])
 
 
 def expected_calibration_error(y: np.ndarray, p: np.ndarray, bins: int = 10) -> float:

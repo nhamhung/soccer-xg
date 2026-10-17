@@ -3,7 +3,7 @@
 ## Local setup
 
 ```bash
-git clone https://github.com/nhamhhung/soccer-xg.git
+git clone https://github.com/nhamhung/soccer-xg.git
 cd soccer-xg
 python -m venv .venv
 source .venv/bin/activate

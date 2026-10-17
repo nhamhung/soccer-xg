@@ -1,11 +1,14 @@
 # Soccer xG: Is Finishing a Skill?
 
+> **New to Python, or just want to try it?** See [START_HERE.md](START_HERE.md): download the ZIP,
+> double-click `start_windows.bat` (Windows) or `start_mac.command` (macOS), and it sets everything up.
+
 An expected-goals (xG) model built from scratch on **100,864 shots** from StatsBomb's free event data
 (3,961 men's and women's matches), benchmarked against StatsBomb's own xG, and used to separate
 finishing skill from luck. It comes with an interactive Streamlit app where you build a shot by
 clicking on the pitch.
 
-**[Live app](https://soccer-xg-cyrb3mjzcfkscvijj5bb8d.streamlit.app/)** · **[Report](https://nhamhhung.github.io/soccer-xg/)**
+**[Live app](https://soccer-xg-cyrb3mjzcfkscvijj5bb8d.streamlit.app/)** · **[Report](https://nhamhung.github.io/soccer-xg/)** · **[Beginner's guide](https://nhamhung.github.io/soccer-xg/beginners-guide.html)**
 
 ## Findings
 
@@ -55,7 +58,7 @@ scripts/            download_data, train, analyze, build_app_data, smoke_app
 app/                Streamlit app (pages_src/) + data/shots_app.parquet (6 MB, committed)
 models/             xg_model.joblib (1 MB, committed)
 results/            analysis outputs read by the app and report (committed)
-notebooks/          01_eda_and_modeling.ipynb
+notebooks/          01_eda_and_modeling.ipynb: step-by-step beginner's guide to the whole pipeline (~4 min, writes nothing)
 report/             report.qmd → report.html (committed)
 tests/              pytest suite
 ```
